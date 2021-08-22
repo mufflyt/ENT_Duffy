@@ -1,0 +1,384 @@
+---
+title: "Covid ENT surgeries"
+date: "August 1, 2021"
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(rstatix)
+library(pwr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(ggplot2)
+#install.packages("esquisse")
+library(esquisse)
+
+#install.packages("hrbrthemes")
+library(hrbrthemes)
+```
+
+```{r}
+d_site <- read_excel("procedure_by_site.xlsx")
+d <- read_excel("overall_count.xlsx")
+head(d_site)
+head(d)
+```
+
+```{r}
+d_long <- tidyr::gather(d, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
+head(d_long)
+```
+
+########################
+Question A. t-test of the mean case volume before and the mean case volume after covid.  Was there a difference in mean volume before and after covid?
+
+```{r}
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Site` = "Site",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+head(d_long_institution)
+
+d_long_institution_count <- d_long_institution %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+head(d_long_institution_count)
+
+ggboxplot(
+  d_long, x = "covid_status", y = "surgeries_count",
+  color = "covid_status", palette = "jco"
+  )
+```
+
+Plot the number of cases before and after covid.  
+```{r}
+plot((d_long_institution$surgeries_count ~ d_long_institution$covid_status))
+
+#esquisse::esquisser(data = d_long)
+
+ggplot2::ggplot(d_long_institution) +
+ aes(x = covid_status, y = surgeries_count) +
+ geom_boxplot(shape = "circle", 
+ fill = "#112446") +
+ scale_color_hue(direction = 1) +
+ labs(x = "Hospital Type", y = "Number of Surgical Cases", 
+ title = "COVID-19 Status") +
+ hrbrthemes::theme_ipsum() +
+ theme(legend.position = "bottom")
+
+ggsave("Images/pre_post_covid.png",
+       width = 10,
+       height = 10,
+       units = c("in"),
+       dpi = 320,
+       device = "jpeg") #  "tiff")
+```
+
+```{r}
+test <- t.test(d_long_institution$surgeries_count ~ d_long_institution$covid_status)
+test
+
+pre_mean <- d_long_institution %>%
+  filter(covid_status == "Precovid") %>%
+  select(surgeries_count) %>% pull() %>%
+  mean() %>%
+  round(., 0)
+
+pre_sd <- d_long_institution %>%
+  filter(covid_status == "Precovid") %>%
+  select(surgeries_count) %>% pull() %>%
+  sd() %>%
+  round(., 0)
+
+post_mean <- d_long_institution %>%
+  filter(covid_status == "Postcovid") %>%
+  select(surgeries_count) %>% pull() %>%
+  mean() %>%
+  round(., 0)
+
+post_sd <- d_long_institution %>%
+  filter(covid_status == "Postcovid") %>%
+  select(surgeries_count) %>% pull() %>%
+  sd() %>%
+  round(., 0)
+```
+There is a statistically significant difference in the number of cases done before (mean = `r test$estimate[[1]]`) and after covid at the institution level (mean = `r test$estimate[[2]]`, p = `r test$p.value`).  
+
+3-Shapiro-wilk normality test.  
+```{r}
+a <- with(d_long_institution, shapiro.test(surgeries_count[covid_status == "Precovid"]))
+b <- with(d_long_institution, shapiro.test(surgeries_count[covid_status == "Postcovid"]))
+
+a
+b
+```
+These data are normally distributed because you can't reject the null hypothesis (`r a$p.value` and `r b$p.value`).  Therefore we do not need to do any non-parametric testing because these data are normally distributed.  
+
+If we looked at the data using non-parametric testing we get the same answer:  The median was different before and after covid.    
+```{r}
+wilcox.test(y = d_long_institution_count$Precovid, 
+            x = d_long_institution_count$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+There was a significant difference in the number of operative cases done pre and post-covid at a paired institution level.
+
+
+
+Question 1: Was there a difference in the total number of ear, nose, and throat cases performed before and after the COVID-19 pandemic?  This question uses a data set with the ***hospital type*** included.  We aggregated the institutions in question 1a.  
+
+1-Convert data to long format
+```{r}
+d_long <- gather(d, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
+head(d_long)
+```
+
+`d_long` data plotted
+```{r}
+ggboxplot(data = d_long, 
+  x = "Site", 
+  y = "surgeries_count",
+  color = "Hospital_type", 
+  palette = "jco") +
+  theme_bw()
+
+#esquisse::esquisser(data = d_long)
+
+ggplot(d_long) +
+ aes(x = Site, y = surgeries_count, colour = Hospital_type) +
+ geom_boxplot(shape = "circle", 
+ fill = "#112446") +
+ scale_color_hue(direction = 1) +
+ labs(x = "Hospital Type", y = "Number of Surgical Cases", 
+ title = "Hospital Types at Each ENT Residency") +
+ hrbrthemes::theme_ipsum() +
+ theme(legend.position = "bottom")
+
+ggsave("Images/Hospital_types.png",
+       width = 10,
+       height = 10,
+       units = c("in"),
+       dpi = 320,
+       device = "jpeg") #  "tiff")
+```
+
+```{r}
+s1 <- group_by(d_long, covid_status) %>%
+  summarise(
+    count = n(),
+    mean = mean(surgeries_count, na.rm = TRUE),
+    sd = sd(surgeries_count, na.rm = TRUE)
+  )
+s1
+```
+
+Sample size calculation
+
+1-calculate effect size using Cohen formula
+```{r}
+d_long %>% cohens_d(surgeries_count ~ covid_status, var.equal = FALSE)
+```
+
+2- calculate the sample size
+```{r}
+pwr.t.test(n = NULL, d = 0.35, sig.level = 0.05, power = 0.8, type = "two.sample")
+```
+
+
+3-Shapiro-wilk normality test.
+
+```{r}
+with(d_long, shapiro.test(surgeries_count[covid_status == "Precovid"]))
+with(d_long, shapiro.test(surgeries_count[covid_status == "Postcovid"]))
+```
+
+4- Wilcox test
+FYI we need all tests to be two-sided so that we can see an increase or a decrease in case volume.  One-sided would be overly presumptuous.  
+```{r}
+wilcox.test(d$Precovid, d$Postcovid, alternative = "two.sided")
+```
+
+
+###################################################################
+Question 1a: can we compare the mean of precovid vs. the mean of postcovid cases for each institution? Mean of cases at 6 institutions pre vs. Mean of cases at 6 institutions post. 
+
+```{r}
+#create combined Site and Covid column
+d_long$Site_Covid <- paste(d_long$Site, d_long$covid_status)
+
+head(d_long)
+
+#plot institutions grouped by covid status
+p <- ggboxplot(d_long, x = "Site", y = "surgeries_count",
+          color = "covid_status", palette = "jco",
+          add = "jitter") +
+  theme_bw()
+p 
+
+#  Add p-value
+p + stat_compare_means()
+
+
+# esquisse::esquisser(data = d_long)
+ggplot(d_long) +
+ aes(x = Site, y = surgeries_count, color = covid_status, fill = Site) +
+ geom_boxplot(shape = "circle", 
+ fill = "#112446") +
+ scale_color_hue(direction = 1) +
+ labs(x = "COVID-19 Status", y = "Number of Surgical Cases", 
+ title = "ENT Residencies") +
+ hrbrthemes::theme_ipsum() +
+ theme(legend.position = "bottom")
+
+
+ggsave("Images/Pre_pos_by_residency.png",
+       width = 10,
+       height = 10,
+       units = c("in"),
+       dpi = 320,
+       device = "jpeg") #  "tiff")
+```
+
+1. Anova by institution: 
+```{r}
+aov <- aov(d_long$surgeries_count ~ d_long$Site_Covid)
+summary(aov)
+```
+
+
+3-Shapiro-wilk normality test.  
+```{r}
+# Extract the residuals
+aov_residuals <- residuals(object = aov)
+# Run Shapiro-Wilk test
+a <- shapiro.test(x = aov_residuals )
+a
+```
+These data are not normally distributed because you can reject the null hypothesis (`r a$p.value` ).  Therefore we do need to do non-parametric testing because these data are normally distributed.  
+
+4- Kruskal-Wallis
+```{r}
+kruskal.test(surgeries_count ~ Site_Covid, data = d_long)
+```
+
+########
+# Asking if there was a different in hospital site type
+
+pairwise test WITH bonferroni and multiple comparisons.  
+Here we DID USE the multiple comparison adjustment. The probability of committing false statistical inferences would considerably increase when more than one hypothesis is simultaneously tested (namely the multiple comparisons), which requires proper adjustment. In multiple comparisons you divide the alpha level by the number of comparison to prevent false positives.  Here we divide 0.05 by six institutions.  Because we are using a PAIRED test here we are comparing each institution to themselves before and after covid.  
+```{r}
+institution_p <- pairwise.t.test(x = d_long_institution$surgeries_count,  #response vector
+                                      g = d_long_institution$Site, #grouping vector
+                 p.adjust.method = "bonf",  #now the p-value is adjusted for multiple comparisons
+                 paired = TRUE,
+                 alternative = "two.sided")  # we need this to be two-sided to see increase as well as decrease in values.  
+
+institution_p <- as.data.frame(institution_p$p.value)
+institution_p
+```
+We cannot reject the alternative hypothesis that the means for CU and Harvard are different at 95% confidence since `r institution_p$CU[[2]]` > 0.05.  We can't say that there is a significant difference between all institutions before and after covid.???????  There was not a difference in case volume when comparing each institution in a paired fashion before and after covid (p> `r institution_p$CU[[2]]`) but there was difference in the overall number of cases that all institutions performed.  
+
+Question 2: Was there a statistically significant decrease in ear, nose, and throat cases before and after COVID-19 in one institution compared to another institution? There are six institutions: CU (University of Colorado), UCSF (University of California San Francisco). Georgetown, Harvard, KU (University of Kansas), and LSU (Louisiana State University).  This looks at all hospital sites (e.g., CU VA vs. CU Children's vs. LSU VA vs. LSU Children's, etc) which I agree is not what we want.   
+
+1- Two-way ANOVA test
+```{r}
+res.aov <- aov(surgeries_count ~ covid_status * Site, data = d_long)
+summary(res.aov)
+```
+
+Question 3: If there was a difference in case types between institutions, was there a difference in the procedure category performed? Examples of procedure category are head_neck_cancer, otology_audiology, facial_plastic_reconstructive_surgery, and General_peds.
+
+```{r}
+head(d_site)
+```
+
+1- Convert data to long format.
+
+```{r}
+d2_long <- gather(d_site, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
+head(d2_long)
+```
+
+2- Two-way ANOVA
+```{r}
+res.aov2 <- aov(surgeries_count ~ Category, data = d2_long)
+summary(res.aov2)
+x <- as_tibble(unlist(summary(res.aov2)))
+```
+There is a difference in the categories of cases done (different numbers of head_neck vs. Otology_Audiology vs. ... was significant p=`r x[9, ]`).  
+
+2- Two-way ANOVA
+```{r}
+res.aov3 <- aov(surgeries_count ~ covid_status * Category, data = d2_long)
+summary(res.aov3)
+plot(res.aov3)
+```
+There was no difference when we added the covid_status variable (p = 0.9163).  
+
+```{r}
+TukeyHSD(res.aov2, which = "covid_status:Category")
+```
+
+
+Question 4: Overall, there is a difference in ENT case volume between the types of hospitals where university hospitals do a statistically larger number of cases than a county, VA, or Children’s hospitals (p<0.01). 
+
+1- ANOVA test
+
+```{r}
+res.aov3 <- aov(surgeries_count ~ Hospital_type, data = d_long)
+summary(res.aov3)
+```
+
+2-Tukey test
+
+```{r}
+TukeyHSD(res.aov3)
+```
+
+3- Shapiro wilk normality test
+```{r}
+# Extract the residuals
+aov_residuals <- residuals(object = res.aov3 )
+# Run Shapiro-Wilk test
+shapiro.test(x = aov_residuals )
+```
+
+4- Kruskal walis test
+```{r}
+kruskal.test(surgeries_count ~ Hospital_type, data = d_long)
+```
+
+5- pairwise Wilcox test
+```{r}
+p <- pairwise.wilcox.test(d_long$surgeries_count, d_long$Hospital_type,
+                 p.adjust.method = "BH")
+p <- as.data.frame(p$p.value)
+p
+```
+
+
+
+
+
+### Question 4a:  Was there a significant difference between all hospital types pre and post?  Was there a statistically significant decrease in the cases explained by the different types of hospitals? (e.g., county, VA, university, or Children’s hospitals)
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
