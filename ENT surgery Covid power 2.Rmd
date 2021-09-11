@@ -25,6 +25,104 @@ library(esquisse)
 library(hrbrthemes)
 ```
 
+
+Is there a difference between pre- and post COVID case numbers when analyzed by hospital type?
+
+## Children's
+```{r}
+d <- read_excel("overall_count_corrected_for_totals2.xlsx")
+
+d_long <- tidyr::gather(d, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
+head(d_long)
+
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Hospital_type` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+d_long_institution_childrens <- d_long_institution %>% filter(Hospital_type == "Childrens")
+
+d_long_institution_count_childrens <- d_long_institution_childrens %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+wilcox.test(y = d_long_institution_count_childrens$Precovid,
+            x = d_long_institution_count_childrens$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+## Community
+```{r}
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Hospital_type` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+d_long_institution_community <- d_long_institution %>% filter(Hospital_type == "Community")
+
+d_long_institution_count_community <- d_long_institution_community %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+wilcox.test(y = d_long_institution_count_community$Precovid,
+            x = d_long_institution_count_community$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+
+## County
+```{r}
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Hospital_type` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+d_long_institution_county <- d_long_institution %>% filter(Hospital_type == "County")
+
+d_long_institution_count_county <- d_long_institution_county %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+wilcox.test(y = d_long_institution_count_county$Precovid,
+            x = d_long_institution_count_county$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+
+## University
+```{r}
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Hospital_type` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+d_long_institution_university <- d_long_institution %>% filter(Hospital_type == "University")
+
+d_long_institution_count_university <- d_long_institution_university %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+wilcox.test(y = d_long_institution_count_university$Precovid,
+            x = d_long_institution_count_university$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+## VA
+```{r}
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Hospital_type` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+d_long_institution_va <- d_long_institution %>% filter(Hospital_type == "VA")
+
+d_long_institution_count_va <- d_long_institution_va %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+wilcox.test(y = d_long_institution_count_va$Precovid,
+            x = d_long_institution_count_va$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+Is there a difference in pre- and post-covid case numbers by KIC type (groups = H&N, Otol, FPRS, Gen/Peds)?
+
+
 ```{r}
 d_site <- read_excel("procedure_by_site.xlsx")
 d <- read_excel("overall_count.xlsx")
@@ -41,15 +139,30 @@ head(d_long)
 Question A. t-test of the mean case volume before and the mean case volume after covid.  Was there a difference in mean volume before and after covid?
 
 ```{r}
+#Holy shit the cases do not add up to the totals.  JAMES DUFFY!!!
+d <- read_excel("overall_count_corrected_for_totals2.xlsx")
+
+d_long <- tidyr::gather(d, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
+head(d_long)
+
+d_long_institution <- d_long 
+```
+
+
+```{r}
 d_long_institution <- d_long %>%
+  mutate(surgeries_count = parse_number(surgeries_count)) %>%
   exploratory::summarize_group(group_cols = c(`Site` = "Site",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
 
-head(d_long_institution)
+d_long_institution$surgeries_count <- as.numeric(d_long_institution$surgeries_count)
 
+head(d_long_institution)
 d_long_institution_count <- d_long_institution %>%
   tidyr::spread(covid_status, surgeries_count)
 
-head(d_long_institution_count)
+head(d_long_institution)
+
+d_long_institution_count
 
 ggboxplot(
   d_long, x = "covid_status", y = "surgeries_count",
@@ -61,17 +174,25 @@ Plot the number of cases before and after covid.
 ```{r}
 plot((d_long_institution$surgeries_count ~ d_long_institution$covid_status))
 
-#esquisse::esquisser(data = d_long)
-
 ggplot2::ggplot(d_long_institution) +
  aes(x = covid_status, y = surgeries_count) +
  geom_boxplot(shape = "circle", 
  fill = "#112446") +
  scale_color_hue(direction = 1) +
- labs(x = "Hospital Type", y = "Number of Surgical Cases", 
+ labs(x = "All institutions", y = "Number of Surgical Cases", 
  title = "COVID-19 Status") +
  hrbrthemes::theme_ipsum() +
  theme(legend.position = "bottom")
+
+
+ggplot(d_long_institution) +
+ aes(x = covid_status, y = surgeries_count) +
+ geom_boxplot(shape = "circle", 
+ fill = "#BABBBD") +
+ theme_minimal() +
+ labs(x = "", y = "Number of Surgical Cases", 
+ title = "COVID-19 Status")
+
 
 ggsave("Images/pre_post_covid.png",
        width = 10,
@@ -139,6 +260,8 @@ Question 1: Was there a difference in the total number of ear, nose, and throat 
 ```{r}
 d_long <- gather(d, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
 head(d_long)
+
+write_csv(d_long, "d_long_by_site.csv")
 ```
 
 `d_long` data plotted
@@ -206,6 +329,92 @@ FYI we need all tests to be two-sided so that we can see an increase or a decrea
 wilcox.test(d$Precovid, d$Postcovid, alternative = "two.sided")
 ```
 
+##################################################################
+
+```{r}
+hospital_type_pre_post <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Site` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+head(hospital_type_pre_post)
+
+hospital_type_pre_post_spread <- hospital_type_pre_post %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+head(hospital_type_pre_post_spread)
+
+wilcox.test(y = hospital_type_pre_post_spread$Precovid, 
+            x = hospital_type_pre_post_spread$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+
+##################################################################
+# Key index cases.  
+
+```{r}
+key_index <- exploratory::read_excel_file( "/Users/tylermuffly/Dropbox (Personal)/ENT_Duffy/procedure_by_site.xlsx", sheet = 1, na = c('','NA'), skip=0, col_names=TRUE, trim_ws=TRUE, tzone='America/Denver') %>%
+  readr::type_convert() %>%
+  exploratory::clean_data_frame() %>%
+  mutate_at(vars(Category, Site, Procedure), funs(factor)) %>%
+  gather(key, value, Precovid, Postcovid, na.rm = TRUE, convert = TRUE) %>%
+  rename(covid_status = key, number_of_cases = value) %>%
+  exploratory::summarize_group(group_cols = c(Category = "Category", `covid_status` = "covid_status"),group_funs = c("none",  "none"),number_of_cases = sum(number_of_cases, na.rm = TRUE))
+
+key_index_pre_post_spread <- key_index %>%
+  tidyr::spread(covid_status, number_of_cases)
+
+head(key_index_pre_post_spread)
+
+wilcox.test(y = key_index_pre_post_spread$Precovid, 
+            x = key_index_pre_post_spread$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+#Facial plastics
+```{r}
+key_index_pre_post_spread_facial_plastic_reconstructive_surgery <- key_index_pre_post_spread %>% filter(Category == "facial_plastic_reconstructive_surgery")
+
+wilcox.test(y = key_index_pre_post_spread_facial_plastic_reconstructive_surgery$Precovid, 
+            x = key_index_pre_post_spread_facial_plastic_reconstructive_surgery$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+```{r}
+key_index_pre_post_spread_General_Peds <- key_index_pre_post_spread %>% filter(Category == "General_Peds")
+
+wilcox.test(y = key_index_pre_post_spread_General_Peds$Precovid, 
+            x = key_index_pre_post_spread_General_Peds$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+
+```{r}
+key_index_pre_post_spread_head_neck <- key_index_pre_post_spread %>% filter(Category == "head_neck")
+
+wilcox.test(y = key_index_pre_post_spread_head_neck$Precovid, 
+            x = key_index_pre_post_spread_head_neck$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
+
+```{r}
+key_index_pre_post_spread_Otology_Audiology <- key_index_pre_post_spread %>% filter(Category == "Otology_Audiology")
+
+wilcox.test(y = key_index_pre_post_spread_Otology_Audiology$Precovid, 
+            x = key_index_pre_post_spread_Otology_Audiology$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
+```
 
 ###################################################################
 Question 1a: can we compare the mean of precovid vs. the mean of postcovid cases for each institution? Mean of cases at 6 institutions pre vs. Mean of cases at 6 institutions post. 
@@ -325,6 +534,29 @@ There was no difference when we added the covid_status variable (p = 0.9163).
 
 ```{r}
 TukeyHSD(res.aov2, which = "covid_status:Category")
+```
+
+#####################################
+# Do over
+```{r}
+d <- read_excel("overall_count.xlsx")
+
+d_long <- tidyr::gather(d, covid_status, surgeries_count, Precovid:Postcovid, factor_key=TRUE)
+head(d_long)
+
+d_long_institution <- d_long %>%
+  exploratory::summarize_group(group_cols = c(`Hospital_type` = "Hospital_type",  `covid_status` = "covid_status"),group_funs = c("none",  "none"),surgeries_count = sum(surgeries_count, na.rm = TRUE))
+
+d_long_institution_childrens <- d_long_institution %>% filter(Hospital_type == "Childrens")
+
+d_long_institution_count_childrens <- d_long_institution_childrens %>%
+  tidyr::spread(covid_status, surgeries_count)
+
+wilcox.test(y = d_long_institution_count_childrens$Precovid,
+            x = d_long_institution_count_childrens$Postcovid, 
+            paired = TRUE,
+            p.adjust.method = "bonf", 
+            alternative = "two.sided")
 ```
 
 
